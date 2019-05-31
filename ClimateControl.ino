@@ -1,6 +1,7 @@
 #include "Arduino.h"
 #include <LiquidCrystal.h>
 #include <dht_nonblocking.h>
+#include <TimerOne.h>
 #define dht_sensor_type DHT_TYPE_11
 
 //Custom degree character
@@ -53,10 +54,12 @@ DHT_nonblocking dht_sensor(dht_sensor_pin, dht_sensor_type);
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7); // @suppress("Abstract class cannot be instantiated")
 
 const unsigned long poll_delay = 3000ul; // Duration between readings, Default = 1 min.
+const unsigned long lcd_refresh_delay = 3000000ul; // Delay before refreshing LCD screen.
 float user_hot_threshold = 32.0; // Holds user selectable hot threshold. Default = 32 degrees C
 float user_cold_threshold = 0.0; // Holds user selectable cold threshold. Default = 0 degrees C
 bool user_temp_fahrenheit = true; // Holds user selectable Fahrenheit indicator. Default = true
 int user_mode = 0; // Holds user selectable mode. 1=set hot threshold, 2=set cold threshold, 3=temp in F/C
+volatile bool refreshLCD = false;
 
 //Variables for debouncing
 bool last_btn_up = LOW;
@@ -89,12 +92,21 @@ void setup()
 	lcd.createChar(0, fan_off);
 	lcd.createChar(1, fan_on);
 	lcd.createChar(3, degree);
+	//Setup timer
+	Timer1.initialize(lcd_refresh_delay);
 	Serial.println(F("<Arduino Ready>"));
 }
 
 
 void loop()
 {
+	if(refreshLCD)
+	{
+		refreshLCD = false;
+		interrupts();
+		processTempHum();
+	}
+
 	if(measure_environment(&temperature,&humidity))
 	{
 		Serial.println(F("New reading received from sensor..."));
@@ -127,8 +139,7 @@ void loop()
 				changeUserTempFahrenheit();
 				break;
 		}
-		delay(2000);
-		processTempHum();
+		Timer1.attachInterrupt(flagRefreshLCD);
 	}
 	//Turn up the set temp
 	else if (last_btn_up== LOW && current_btn_up  == HIGH)
@@ -151,8 +162,7 @@ void loop()
 				changeUserTempFahrenheit();
 				break;
 		}
-		delay(2000);
-		processTempHum();
+		Timer1.attachInterrupt(flagRefreshLCD);
 	}
 	//Change the mode
 	else if (last_btn_mode== LOW && current_btn_mode  == HIGH)
@@ -192,20 +202,19 @@ void loop()
 		lcd.setCursor(0,1);
 		lcd.print("mode enabled");
 
-		delay(2000);
-		processTempHum();
+		Timer1.attachInterrupt(flagRefreshLCD);
 	}
 }
 
-static bool measure_environment( float *temperature, float *humidity ) // @suppress("Unused static function")
+static bool measure_environment(float *temperature, float *humidity) // @suppress("Unused static function")
 {
-  static unsigned long measurement_timestamp = millis( );
+  static unsigned long measurement_timestamp = millis();
 
   if((millis() - measurement_timestamp) > poll_delay)
   {
     if(dht_sensor.measure(temperature,humidity))
     {
-      measurement_timestamp = millis( );
+      measurement_timestamp = millis();
       return(true);
     }
   }
@@ -347,4 +356,11 @@ void changeUserTempFahrenheit()
 	//Second LCD line
 	lcd.write(byte(3));
 	lcd.print(unit);
+}
+
+void flagRefreshLCD()
+{
+	refreshLCD = true;
+	Timer1.detachInterrupt();
+	noInterrupts();
 }
