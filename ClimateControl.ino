@@ -1,7 +1,13 @@
+/*
+	V1.0 Climate Control Arduino Project for Arduino Mega 2560
+
+	By Martin Collins
+	31st May 2019
+*/
+
 #include "Arduino.h"
 #include <LiquidCrystal.h>
 #include <dht_nonblocking.h>
-#include <TimerOne.h>
 #define dht_sensor_type DHT_TYPE_11
 
 //Custom degree character
@@ -53,13 +59,15 @@ const int lcd_cols = 16, lcd_lines = 2;
 DHT_nonblocking dht_sensor(dht_sensor_pin, dht_sensor_type);
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7); // @suppress("Abstract class cannot be instantiated")
 
-const unsigned long poll_delay = 3000ul; // Duration between readings, Default = 1 min.
-const unsigned long lcd_refresh_delay = 3000000ul; // Delay before refreshing LCD screen.
+const unsigned long poll_delay = 60000ul; // Duration between readings, Default = 1 min.
+const unsigned long lcd_refresh_delay = 2000ul; // 2 secs delay before refreshing LCD screen.
+unsigned long lcd_refresh_timestamp = 0; // Holds timestamp of when lcd refresh was requested.
 float user_hot_threshold = 32.0; // Holds user selectable hot threshold. Default = 32 degrees C
 float user_cold_threshold = 0.0; // Holds user selectable cold threshold. Default = 0 degrees C
 bool user_temp_fahrenheit = true; // Holds user selectable Fahrenheit indicator. Default = true
 int user_mode = 0; // Holds user selectable mode. 1=set hot threshold, 2=set cold threshold, 3=temp in F/C
-volatile bool refreshLCD = false;
+bool refreshLCD = false;
+bool firstRun = true;
 
 //Variables for debouncing
 bool last_btn_up = LOW;
@@ -68,6 +76,7 @@ bool last_btn_down = LOW;
 bool current_btn_down = LOW;
 bool last_btn_mode = LOW;
 bool current_btn_mode = LOW;
+const int debounce_delay = 100;
 
 float temperature;
 float humidity;
@@ -92,130 +101,30 @@ void setup()
 	lcd.createChar(0, fan_off);
 	lcd.createChar(1, fan_on);
 	lcd.createChar(3, degree);
-	//Setup timer
-	Timer1.initialize(lcd_refresh_delay);
 	Serial.println(F("<Arduino Ready>"));
 }
 
-
 void loop()
 {
-	if(refreshLCD)
-	{
-		refreshLCD = false;
-		interrupts();
-		processTempHum();
-	}
-
-	if(measure_environment(&temperature,&humidity))
-	{
-		Serial.println(F("New reading received from sensor..."));
-		processTempHum();
-	}
-
-	//Debounce buttons
-	current_btn_up = debounce(last_btn_up, btn_up);
-	current_btn_down  = debounce(last_btn_down, btn_down);
-	current_btn_mode  = debounce(last_btn_mode, btn_mode);
-
-	//Turn down the set temp
-	if (last_btn_down== LOW && current_btn_down == HIGH)
-	{
-		Serial.println(F("Down button pressed!"));
-
-		switch (user_mode)
-		{
-			case 1:
-				user_hot_threshold--;
-				Serial.println(F("Decrease hot threshold by 1."));
-				displayParamValue("Hot threshold:",user_hot_threshold);
-				break;
-			case 2:
-				user_cold_threshold--;
-				Serial.println(F("Decrease cold threshold by 1."));
-				displayParamValue("Cold threshold:",user_cold_threshold);
-				break;
-			case 3:
-				changeUserTempFahrenheit();
-				break;
-		}
-		Timer1.attachInterrupt(flagRefreshLCD);
-	}
-	//Turn up the set temp
-	else if (last_btn_up== LOW && current_btn_up  == HIGH)
-	{
-		Serial.println(F("Up button pressed!"));
-
-		switch (user_mode)
-		{
-			case 1:
-				user_hot_threshold++;
-				Serial.println(F("Increase hot threshold by 1."));
-				displayParamValue("Hot threshold:",user_hot_threshold);
-				break;
-			case 2:
-				user_cold_threshold++;
-				Serial.println(F("Increase cold threshold by 1."));
-				displayParamValue("Cold threshold:",user_cold_threshold);
-				break;
-			case 3:
-				changeUserTempFahrenheit();
-				break;
-		}
-		Timer1.attachInterrupt(flagRefreshLCD);
-	}
-	//Change the mode
-	else if (last_btn_mode== LOW && current_btn_mode  == HIGH)
-	{
-		Serial.print(F("Mode button pressed!"));
-
-		switch (user_mode)
-		{
-			case 3:
-				user_mode = 1;
-				break;
-			default:
-				user_mode++;
-				break;
-		}
-		Serial.print(F(" Selected mode: "));
-		Serial.println(user_mode);
-
-		lcd.clear();
-		lcd.setCursor(0,0);
-
-		switch (user_mode)
-		{
-			case 1:
-				Serial.println(F("Set Hot Threshold Mode selected."));
-				lcd.print("Hot threshold");
-				break;
-			case 2:
-				Serial.println(F("Set Cold Threshold Mode selected."));
-				lcd.print("Cold threshold");
-				break;
-			case 3:
-				Serial.println(F("Set Metric/Non-Metric Mode selected."));
-				lcd.print("Metric/N-Metric");
-				break;
-		}
-		lcd.setCursor(0,1);
-		lcd.print("mode enabled");
-
-		Timer1.attachInterrupt(flagRefreshLCD);
-	}
+	checkLCDRefresh();
+	checkInputFromButtons();
+	checkForNewTempHumReading();
 }
 
 static bool measure_environment(float *temperature, float *humidity) // @suppress("Unused static function")
 {
   static unsigned long measurement_timestamp = millis();
 
-  if((millis() - measurement_timestamp) > poll_delay)
+  if((millis() - measurement_timestamp) >= poll_delay || firstRun == true)
   {
     if(dht_sensor.measure(temperature,humidity))
     {
-      measurement_timestamp = millis();
-      return(true);
+    	if(firstRun)
+    	{
+    		firstRun = false;
+    	}
+    	measurement_timestamp = millis();
+    	return(true);
     }
   }
   return(false);
@@ -226,7 +135,7 @@ bool debounce(bool last, int pin)
   bool current = digitalRead(pin);
   if (last != current)
   {
-    delay(5);
+    delay(debounce_delay);
     current = digitalRead(pin);
   }
   return current;
@@ -349,7 +258,9 @@ void changeUserTempFahrenheit()
 	{
 		unit = 'C';
 	}
-
+	Serial.print("Show temp in: ");
+	Serial.print(char(176));
+	Serial.println(unit);
 	//First LCD line
 	lcd.print("Show temp in:");
 	lcd.setCursor(0,1);
@@ -360,7 +271,121 @@ void changeUserTempFahrenheit()
 
 void flagRefreshLCD()
 {
-	refreshLCD = true;
-	Timer1.detachInterrupt();
-	noInterrupts();
+	if(refreshLCD == false)
+	{
+		refreshLCD = true;
+	}
+	lcd_refresh_timestamp = millis();
+}
+
+void checkInputFromButtons()
+{
+	//Debounce buttons
+	current_btn_up = debounce(last_btn_up, btn_up);
+	current_btn_down  = debounce(last_btn_down, btn_down);
+	current_btn_mode  = debounce(last_btn_mode, btn_mode);
+
+	//Turn down the set temp
+	if (last_btn_down== LOW && current_btn_down == HIGH && firstRun != true)
+	{
+		Serial.println(F("Down button pressed!"));
+
+		switch (user_mode)
+		{
+			case 1:
+				user_hot_threshold--;
+				Serial.println(F("Decrease hot threshold by 1."));
+				displayParamValue("Hot threshold:",user_hot_threshold);
+				break;
+			case 2:
+				user_cold_threshold--;
+				Serial.println(F("Decrease cold threshold by 1."));
+				displayParamValue("Cold threshold:",user_cold_threshold);
+				break;
+			case 3:
+				changeUserTempFahrenheit();
+				break;
+		}
+			flagRefreshLCD();
+		}
+		//Turn up the set temp
+		else if (last_btn_up== LOW && current_btn_up  == HIGH && firstRun != true)
+		{
+			Serial.println(F("Up button pressed!"));
+
+			switch (user_mode)
+			{
+				case 1:
+					user_hot_threshold++;
+					Serial.println(F("Increase hot threshold by 1."));
+					displayParamValue("Hot threshold:",user_hot_threshold);
+					break;
+				case 2:
+					user_cold_threshold++;
+					Serial.println(F("Increase cold threshold by 1."));
+					displayParamValue("Cold threshold:",user_cold_threshold);
+					break;
+				case 3:
+					changeUserTempFahrenheit();
+					break;
+			}
+			flagRefreshLCD();
+		}
+		//Change the mode
+		else if (last_btn_mode== LOW && current_btn_mode  == HIGH && firstRun != true)
+		{
+			Serial.print(F("Mode button pressed!"));
+
+			switch (user_mode)
+			{
+				case 3:
+					user_mode = 1;
+					break;
+				default:
+					user_mode++;
+					break;
+			}
+			Serial.print(F(" Selected mode: "));
+			Serial.println(user_mode);
+
+			lcd.clear();
+			lcd.setCursor(0,0);
+
+			switch (user_mode)
+			{
+				case 1:
+					Serial.println(F("Set Hot Threshold Mode selected."));
+					lcd.print("Hot threshold");
+					break;
+				case 2:
+					Serial.println(F("Set Cold Threshold Mode selected."));
+					lcd.print("Cold threshold");
+					break;
+				case 3:
+					Serial.println(F("Set Metric/Non-Metric Mode selected."));
+					lcd.print("Metric/N-Metric");
+					break;
+			}
+			lcd.setCursor(0,1);
+			lcd.print("mode enabled");
+			flagRefreshLCD();
+		}
+}
+
+void checkLCDRefresh()
+{
+	if(refreshLCD == true && (millis() - lcd_refresh_timestamp) >= lcd_refresh_delay)
+	{
+		refreshLCD = false;
+		processTempHum();
+	}
+}
+
+void checkForNewTempHumReading()
+{
+	if(measure_environment(&temperature,&humidity))
+	{
+		Serial.println(F("New reading received from sensor..."));
+		processTempHum();
+	}
 }
