@@ -1,8 +1,8 @@
 /*
-	V1.2a Climate Control Arduino Project for Arduino Mega 2560
+	V1.3 Climate Control Arduino Project for Arduino Mega 2560
 
 	By Martin Collins
-	31st May 2019
+	1st June 2019
 */
 
 #include "Arduino.h"
@@ -64,11 +64,14 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7); // @suppress("Abstract class cannot b
 unsigned long poll_delay = 30000ul; // Duration between readings, Default = 30 secs.
 const unsigned long min_poll_delay = 10000ul; //Minimum polling delay. Default = 10 secs.
 const unsigned long lcd_refresh_delay = 2000ul; // 2 secs delay before refreshing LCD screen.
+const unsigned long new_reading_ind_dur = 2000ul; // 2 secs duration to display new reading indicator.
+const char new_reading_ind = '*'; // New reading indicator.
 unsigned long lcd_refresh_timestamp = 0; // Holds timestamp of when lcd refresh was requested.
+bool new_reading = false; // Indicates whether new reading is available.
 float user_hot_threshold = 32.0; // Holds user selectable hot threshold. Default = 32 degrees C
 float user_cold_threshold = 0.0; // Holds user selectable cold threshold. Default = 0 degrees C
 bool user_temp_fahrenheit = true; // Holds user selectable Fahrenheit indicator. Default = true
-int user_mode = 0; // Holds user selectable mode. 1=set hot threshold, 2=set cold threshold, 3=temp in F/C
+int user_mode = 0; // Holds user selectable mode. 1=set hot threshold, 2=set cold threshold, 3=temp in F/C, 4=Set polling frequency (secs)
 bool refreshLCD = false;
 bool firstRun = true;
 
@@ -420,9 +423,45 @@ void checkLCDRefresh()
 
 void checkForNewTempHumReading()
 {
+	static unsigned long new_reading_timestamp = 0;
+	static bool new_reading_ind_enabled = false;
+
 	if(measure_environment(&temperature,&humidity))
 	{
 		Serial.println(F("New reading received from sensor..."));
+		new_reading = true;
+
 		processTempHum();
+	}
+
+	if(new_reading == true && new_reading_ind_enabled == false)
+	{
+		enableNewReadingIndicator(true);
+		new_reading_ind_enabled = true;
+
+		new_reading_timestamp = millis();
+	}
+	else
+	if((millis() - new_reading_timestamp) >= new_reading_ind_dur && new_reading_ind_enabled == true)
+	{
+		enableNewReadingIndicator(false);
+		new_reading_ind_enabled = false;
+		new_reading = false;
+	}
+}
+
+void enableNewReadingIndicator(bool enable)
+{
+	lcd.setCursor(15,0);
+
+	if(enable)
+	{
+		Serial.println("Turn on new reading indicator.");
+		lcd.write(new_reading_ind);
+	}
+	else
+	{
+		Serial.println("Turn off new reading indicator.");
+		lcd.write(" ");
 	}
 }
