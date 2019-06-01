@@ -67,7 +67,6 @@ const unsigned long lcd_refresh_delay = 2000ul; // 2 secs delay before refreshin
 const unsigned long new_reading_ind_dur = 2000ul; // 2 secs duration to display new reading indicator.
 const char new_reading_ind = '*'; // New reading indicator.
 unsigned long lcd_refresh_timestamp = 0; // Holds timestamp of when lcd refresh was requested.
-bool new_reading = false; // Indicates whether new reading is available.
 float user_hot_threshold = 32.0; // Holds user selectable hot threshold. Default = 32 degrees C
 float user_cold_threshold = 0.0; // Holds user selectable cold threshold. Default = 0 degrees C
 bool user_temp_fahrenheit = true; // Holds user selectable Fahrenheit indicator. Default = true
@@ -425,6 +424,7 @@ void checkForNewTempHumReading()
 {
 	static unsigned long new_reading_timestamp = 0;
 	static bool new_reading_ind_enabled = false;
+	static bool new_reading = false;
 
 	if(measure_environment(&temperature,&humidity))
 	{
