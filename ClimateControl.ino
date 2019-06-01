@@ -1,5 +1,5 @@
 /*
-	V1.3 Climate Control Arduino Project for Arduino Mega 2560
+	V1.4 Climate Control Project for Arduino Mega 2560
 
 	By Martin Collins
 	1st June 2019
@@ -73,6 +73,7 @@ bool user_temp_fahrenheit = true; // Holds user selectable Fahrenheit indicator.
 int user_mode = 0; // Holds user selectable mode. 1=set hot threshold, 2=set cold threshold, 3=temp in F/C, 4=Set polling frequency (secs)
 bool refreshLCD = false;
 bool firstRun = true;
+bool holdRefresh = false;
 
 //Variables for debouncing
 bool last_btn_up = LOW;
@@ -175,48 +176,52 @@ void processTempHum()
 		displayTemp = temperature;
 	}
 
-	lcd.clear();
-	//First LCD line
-	lcd.setCursor(0,0);
-	lcd.print("Temp:");
-	lcd.print(displayTemp, 1);
-	lcd.write(byte(3));
-	lcd.print(unit);
-	//Second LCD line
-	lcd.setCursor(0,1);
-	lcd.print("Hum.:");
-	lcd.print(humidity, 1);
-	lcd.print("%");
+	if(holdRefresh == false)
+	{
+		lcd.clear();
+		//First LCD line
+		lcd.setCursor(0,0);
+		lcd.print("Temp:");
+		lcd.print(displayTemp, 1);
+		lcd.write(byte(3));
+		lcd.print(unit);
+		//Second LCD line
+		lcd.setCursor(0,1);
+		lcd.print("Hum.:");
+		lcd.print(humidity, 1);
+		lcd.print("%");
 
-	if (temperature <= user_cold_threshold)
-	{
-		//COLD
-		enableLED(led_blue);
-		analogWrite(motor_pin, 0);
-		lcd.setCursor(11,1);
-		lcd.print("[C]");
-		lcd.setCursor(15,1);
-		lcd.write(byte(0));
-	}
-	else if (temperature >= user_hot_threshold)
-	{
-		//HOT
-		enableLED(led_red);
-		analogWrite(motor_pin, 255);
-		lcd.setCursor(11,1);
-		lcd.print("[H]");
-		lcd.setCursor(15,1);
-		lcd.write(byte(1));
-	}
-	else
-	{
-		//OK
-		enableLED(led_green);
-		analogWrite(motor_pin, 0);
-		lcd.setCursor(11,1);
-		lcd.print("[G]");
-		lcd.setCursor(15,1);
-		lcd.write(byte(0));
+
+		if (temperature <= user_cold_threshold)
+		{
+			//COLD
+			enableLED(led_blue);
+			analogWrite(motor_pin, 0);
+			lcd.setCursor(11,1);
+			lcd.print("[C]");
+			lcd.setCursor(15,1);
+			lcd.write(byte(0));
+		}
+		else if (temperature >= user_hot_threshold)
+		{
+			//HOT
+			enableLED(led_red);
+			analogWrite(motor_pin, 255);
+			lcd.setCursor(11,1);
+			lcd.print("[H]");
+			lcd.setCursor(15,1);
+			lcd.write(byte(1));
+		}
+		else
+		{
+			//OK
+			enableLED(led_green);
+			analogWrite(motor_pin, 0);
+			lcd.setCursor(11,1);
+			lcd.print("[G]");
+			lcd.setCursor(15,1);
+			lcd.write(byte(0));
+		}
 	}
 }
 
@@ -310,6 +315,7 @@ void checkInputFromButtons()
 	//Turn down the set temp
 	if (last_btn_down== LOW && current_btn_down == HIGH && firstRun != true)
 	{
+		holdRefresh = true;
 		Serial.println(F("Down button pressed!"));
 
 		switch (user_mode)
@@ -341,6 +347,7 @@ void checkInputFromButtons()
 		//Turn up the set temp
 		else if (last_btn_up== LOW && current_btn_up  == HIGH && firstRun != true)
 		{
+			holdRefresh = true;
 			Serial.println(F("Up button pressed!"));
 
 			switch (user_mode)
@@ -369,6 +376,7 @@ void checkInputFromButtons()
 		//Change the mode
 		else if (last_btn_mode== LOW && current_btn_mode  == HIGH && firstRun != true)
 		{
+			holdRefresh = true;
 			Serial.print(F("Mode button pressed!"));
 
 			switch (user_mode)
@@ -416,6 +424,7 @@ void checkLCDRefresh()
 	if(refreshLCD == true && (millis() - lcd_refresh_timestamp) >= lcd_refresh_delay)
 	{
 		refreshLCD = false;
+		holdRefresh = false;
 		processTempHum();
 	}
 }
@@ -454,14 +463,17 @@ void enableNewReadingIndicator(bool enable)
 {
 	lcd.setCursor(15,0);
 
-	if(enable)
+	if(holdRefresh == false)
 	{
-		Serial.println("Turn on new reading indicator.");
-		lcd.write(new_reading_ind);
-	}
-	else
-	{
-		Serial.println("Turn off new reading indicator.");
-		lcd.write(" ");
+		if(enable)
+		{
+			Serial.println("Turn on new reading indicator.");
+			lcd.write(new_reading_ind);
+		}
+		else
+		{
+			Serial.println("Turn off new reading indicator.");
+			lcd.write(" ");
+		}
 	}
 }
