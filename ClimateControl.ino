@@ -1,5 +1,5 @@
 /*
-	V1.0 Climate Control Arduino Project for Arduino Mega 2560
+	V1.1 Climate Control Arduino Project for Arduino Mega 2560
 
 	By Martin Collins
 	31st May 2019
@@ -9,6 +9,8 @@
 #include <LiquidCrystal.h>
 #include <dht_nonblocking.h>
 #define dht_sensor_type DHT_TYPE_11
+
+const bool DEBUG = false;
 
 //Custom degree character
 byte degree[8] = {
@@ -83,7 +85,10 @@ float humidity;
 
 void setup()
 {
-	Serial.begin(9600);
+	if(DEBUG == true)
+	{
+		Serial.begin(9600);
+	}
 	//Setup Motor as Output
 	pinMode(motor_pin, OUTPUT);
 	//Setup LEDs as Output
