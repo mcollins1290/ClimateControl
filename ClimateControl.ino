@@ -1,5 +1,5 @@
 /*
-	V1.1 Climate Control Arduino Project for Arduino Mega 2560
+	V1.2 Climate Control Arduino Project for Arduino Mega 2560
 
 	By Martin Collins
 	31st May 2019
@@ -10,7 +10,7 @@
 #include <dht_nonblocking.h>
 #define dht_sensor_type DHT_TYPE_11
 
-const bool DEBUG = false;
+const bool DEBUG = true;
 
 //Custom degree character
 byte degree[8] = {
@@ -61,7 +61,8 @@ const int lcd_cols = 16, lcd_lines = 2;
 DHT_nonblocking dht_sensor(dht_sensor_pin, dht_sensor_type);
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7); // @suppress("Abstract class cannot be instantiated")
 
-const unsigned long poll_delay = 60000ul; // Duration between readings, Default = 1 min.
+unsigned long poll_delay = 30000ul; // Duration between readings, Default = 30 secs.
+const unsigned long min_poll_delay = 10000ul; //Minimum polling delay. Default = 10 secs.
 const unsigned long lcd_refresh_delay = 2000ul; // 2 secs delay before refreshing LCD screen.
 unsigned long lcd_refresh_timestamp = 0; // Holds timestamp of when lcd refresh was requested.
 float user_hot_threshold = 32.0; // Holds user selectable hot threshold. Default = 32 degrees C
@@ -222,28 +223,42 @@ float convertTempfromCtoF(float *temperatureInC)
 	return (*temperatureInC * 1.8) + 32.0;
 }
 
-void displayParamValue(const char* firstLineMsg, float paramTempInC)
+void displayParamValue(const char* prefix, float param, bool paramIsTemp, const char* suffix = 0)
 {
 	char unit;
-	float displayTemp;
+	float displayParamValue;
 
-	if(user_temp_fahrenheit)
+	if (paramIsTemp)
 	{
-		unit = 'F';
-		displayTemp = convertTempfromCtoF(&paramTempInC);
+		if(user_temp_fahrenheit)
+		{
+			unit = 'F';
+			displayParamValue = convertTempfromCtoF(&param);
+		}
+		else
+		{
+			unit = 'C';
+			displayParamValue = param;
+		}
 	}
 	else
 	{
-		unit = 'C';
-		displayTemp = paramTempInC;
+		displayParamValue = param;
 	}
 	lcd.clear();
 	lcd.setCursor(0,0);
-	lcd.print(firstLineMsg);
+	lcd.print(prefix);
 	lcd.setCursor(0,1);
-	lcd.print(displayTemp);
-	lcd.write(byte(3));
-	lcd.print(unit);
+	lcd.print(displayParamValue,0);
+	if(paramIsTemp)
+	{
+		lcd.write(byte(3));
+		lcd.print(unit);
+	}
+	if(suffix != 0)
+	{
+		lcd.print(suffix);
+	}
 }
 
 void changeUserTempFahrenheit()
@@ -299,16 +314,24 @@ void checkInputFromButtons()
 		{
 			case 1:
 				user_hot_threshold--;
-				Serial.println(F("Decrease hot threshold by 1."));
-				displayParamValue("Hot threshold:",user_hot_threshold);
+				Serial.println(F("Decrease hot threshold by 1 degree."));
+				displayParamValue("Hot threshold:",user_hot_threshold,true);
 				break;
 			case 2:
 				user_cold_threshold--;
-				Serial.println(F("Decrease cold threshold by 1."));
-				displayParamValue("Cold threshold:",user_cold_threshold);
+				Serial.println(F("Decrease cold threshold by 1 degree."));
+				displayParamValue("Cold threshold:",user_cold_threshold,true);
 				break;
 			case 3:
 				changeUserTempFahrenheit();
+				break;
+			case 4:
+				if((poll_delay-1000) >= min_poll_delay)
+				{
+					poll_delay = poll_delay-1000;
+					Serial.println(F("Decrease Polling Frequency by 1 second."));
+				}
+				displayParamValue("Polling freq.:",(poll_delay/1000),false," sec(s)");
 				break;
 		}
 			flagRefreshLCD();
@@ -322,16 +345,21 @@ void checkInputFromButtons()
 			{
 				case 1:
 					user_hot_threshold++;
-					Serial.println(F("Increase hot threshold by 1."));
-					displayParamValue("Hot threshold:",user_hot_threshold);
+					Serial.println(F("Increase hot threshold by 1 degree."));
+					displayParamValue("Hot threshold:",user_hot_threshold,true);
 					break;
 				case 2:
 					user_cold_threshold++;
-					Serial.println(F("Increase cold threshold by 1."));
-					displayParamValue("Cold threshold:",user_cold_threshold);
+					Serial.println(F("Increase cold threshold by 1 degree."));
+					displayParamValue("Cold threshold:",user_cold_threshold,true);
 					break;
 				case 3:
 					changeUserTempFahrenheit();
+					break;
+				case 4:
+					poll_delay = poll_delay+1000;
+					Serial.println(F("Increase Polling Frequency by 1 second."));
+					displayParamValue("Polling freq.:",(poll_delay/1000),false," sec(s)");
 					break;
 			}
 			flagRefreshLCD();
@@ -343,7 +371,7 @@ void checkInputFromButtons()
 
 			switch (user_mode)
 			{
-				case 3:
+				case 4:
 					user_mode = 1;
 					break;
 				default:
@@ -369,6 +397,10 @@ void checkInputFromButtons()
 				case 3:
 					Serial.println(F("Set Metric/Non-Metric Mode selected."));
 					lcd.print("Metric/N-Metric");
+					break;
+				case 4:
+					Serial.println(F("Set Polling Frequency Mode selected."));
+					lcd.print("Set Polling Freq");
 					break;
 			}
 			lcd.setCursor(0,1);
