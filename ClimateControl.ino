@@ -1,5 +1,5 @@
 /*
-	V1.2 Climate Control Arduino Project for Arduino Mega 2560
+	V1.2a Climate Control Arduino Project for Arduino Mega 2560
 
 	By Martin Collins
 	31st May 2019
@@ -10,7 +10,7 @@
 #include <dht_nonblocking.h>
 #define dht_sensor_type DHT_TYPE_11
 
-const bool DEBUG = true;
+const bool DEBUG = false;
 
 //Custom degree character
 byte degree[8] = {
