@@ -1,5 +1,5 @@
 /*
-	V1.4 Climate Control Project for Arduino Mega 2560
+	V1.5 Climate Control Project for Arduino Mega 2560
 
 	By Martin Collins
 	1st June 2019
@@ -176,52 +176,49 @@ void processTempHum()
 		displayTemp = temperature;
 	}
 
-	if(holdRefresh == false)
+	lcd.clear();
+	//First LCD line
+	lcd.setCursor(0,0);
+	lcd.print("Temp:");
+	lcd.print(displayTemp, 1);
+	lcd.write(byte(3));
+	lcd.print(unit);
+	//Second LCD line
+	lcd.setCursor(0,1);
+	lcd.print("Hum.:");
+	lcd.print(humidity, 0);
+	lcd.print("%");
+
+
+	if (temperature <= user_cold_threshold)
 	{
-		lcd.clear();
-		//First LCD line
-		lcd.setCursor(0,0);
-		lcd.print("Temp:");
-		lcd.print(displayTemp, 1);
-		lcd.write(byte(3));
-		lcd.print(unit);
-		//Second LCD line
-		lcd.setCursor(0,1);
-		lcd.print("Hum.:");
-		lcd.print(humidity, 1);
-		lcd.print("%");
-
-
-		if (temperature <= user_cold_threshold)
-		{
-			//COLD
-			enableLED(led_blue);
-			analogWrite(motor_pin, 0);
-			lcd.setCursor(11,1);
-			lcd.print("[C]");
-			lcd.setCursor(15,1);
-			lcd.write(byte(0));
-		}
-		else if (temperature >= user_hot_threshold)
-		{
-			//HOT
-			enableLED(led_red);
-			analogWrite(motor_pin, 255);
-			lcd.setCursor(11,1);
-			lcd.print("[H]");
-			lcd.setCursor(15,1);
-			lcd.write(byte(1));
-		}
-		else
-		{
-			//OK
-			enableLED(led_green);
-			analogWrite(motor_pin, 0);
-			lcd.setCursor(11,1);
-			lcd.print("[G]");
-			lcd.setCursor(15,1);
-			lcd.write(byte(0));
-		}
+		//COLD
+		enableLED(led_blue);
+		analogWrite(motor_pin, 0);
+		lcd.setCursor(11,1);
+		lcd.print("[C]");
+		lcd.setCursor(15,1);
+		lcd.write(byte(0));
+	}
+	else if (temperature >= user_hot_threshold)
+	{
+		//HOT
+		enableLED(led_red);
+		analogWrite(motor_pin, 255);
+		lcd.setCursor(11,1);
+		lcd.print("[H]");
+		lcd.setCursor(15,1);
+		lcd.write(byte(1));
+	}
+	else
+	{
+		//OK
+		enableLED(led_green);
+		analogWrite(motor_pin, 0);
+		lcd.setCursor(11,1);
+		lcd.print("[G]");
+		lcd.setCursor(15,1);
+		lcd.write(byte(0));
 	}
 }
 
@@ -440,22 +437,28 @@ void checkForNewTempHumReading()
 		Serial.println(F("New reading received from sensor..."));
 		new_reading = true;
 
-		processTempHum();
+		if(holdRefresh != true)
+		{
+			processTempHum();
+		}
 	}
 
-	if(new_reading == true && new_reading_ind_enabled == false)
+	if(holdRefresh != true)
 	{
-		enableNewReadingIndicator(true);
-		new_reading_ind_enabled = true;
+		if(new_reading == true && new_reading_ind_enabled == false)
+		{
+			enableNewReadingIndicator(true);
+			new_reading_ind_enabled = true;
 
-		new_reading_timestamp = millis();
-	}
-	else
-	if((millis() - new_reading_timestamp) >= new_reading_ind_dur && new_reading_ind_enabled == true)
-	{
-		enableNewReadingIndicator(false);
-		new_reading_ind_enabled = false;
-		new_reading = false;
+			new_reading_timestamp = millis();
+		}
+		else
+		if((millis() - new_reading_timestamp) >= new_reading_ind_dur && new_reading_ind_enabled == true)
+		{
+			enableNewReadingIndicator(false);
+			new_reading_ind_enabled = false;
+			new_reading = false;
+		}
 	}
 }
 
@@ -463,17 +466,14 @@ void enableNewReadingIndicator(bool enable)
 {
 	lcd.setCursor(15,0);
 
-	if(holdRefresh == false)
+	if(enable)
 	{
-		if(enable)
-		{
-			Serial.println("Turn on new reading indicator.");
-			lcd.write(new_reading_ind);
-		}
-		else
-		{
-			Serial.println("Turn off new reading indicator.");
-			lcd.write(" ");
-		}
+		Serial.println("Turn on new reading indicator.");
+		lcd.write(new_reading_ind);
+	}
+	else
+	{
+		Serial.println("Turn off new reading indicator.");
+		lcd.write(" ");
 	}
 }
