@@ -1,5 +1,5 @@
 /*
-	V1.5 Climate Control Project for Arduino Mega 2560
+	V2.0 Climate Control Project for Arduino Mega 2560
 
 	By Martin Collins
 	1st June 2019
